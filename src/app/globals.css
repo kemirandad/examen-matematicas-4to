@@ -1,0 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html { scroll-behavior: smooth; }
+body { margin: 0; font-family: 'Segoe UI', Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+::selection { background: #99f6e4; color: #134e4a; }

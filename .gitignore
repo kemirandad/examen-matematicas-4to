@@ -1,0 +1,10 @@
+node_modules/
+.next/
+.next-release/
+out/
+.env*
+!.env.local.example
+firebase-debug.log
+firestore-debug.log
+*.tsbuildinfo
+private/

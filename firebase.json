@@ -1,0 +1,24 @@
+{
+  "functions": {
+    "source": "functions",
+    "runtime": "nodejs20"
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "hosting": {
+    "public": ".next-release",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "cleanUrls": true,
+    "rewrites": [
+      {
+        "source": "/api/math-exam/**",
+        "function": {
+          "functionId": "mathExamApi",
+          "region": "us-central1"
+        }
+      },
+      { "source": "**", "destination": "/index.html" }
+    ]
+  }
+}

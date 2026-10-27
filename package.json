@@ -6,10 +6,17 @@
     "dev": "next dev --turbopack -p 9003",
     "build": "next build",
     "start": "next start -p 9003",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "pages:dev": "wrangler pages dev out",
+    "pages:create": "wrangler pages project create examen-matematicas-4to --production-branch main",
+    "pages:deploy": "wrangler pages deploy out --project-name examen-matematicas-4to",
+    "db:create": "wrangler d1 create examen-matematicas-4to",
+    "db:migrate": "wrangler d1 migrations apply examen-matematicas-4to --remote",
+    "db:migrate:local": "wrangler d1 migrations apply examen-matematicas-4to --local"
   },
   "dependencies": {
     "firebase": "^10.12.2",
+    "jose": "^6.2.13",
     "lucide-react": "^0.475.0",
     "next": "15.3.3",
     "react": "^18.3.1",
@@ -22,6 +29,7 @@
     "autoprefixer": "^10.4.20",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
-    "typescript": "^5"
+    "typescript": "^5",
+    "wrangler": "^4.153.0"
   }
 }

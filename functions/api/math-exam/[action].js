@@ -126,6 +126,8 @@ async function handle(action, request, env) {
 
   if (action === 'results') {
     await requireAdmin(request, env);
+    const expired = await env.DB.prepare(`SELECT * FROM math_exam_attempts WHERE status = 'in_progress' AND deadline_at <= ? LIMIT 500`).bind(Date.now()).all();
+    await Promise.all(expired.results.map((attempt) => finishAttempt(env, attempt, JSON.parse(attempt.answers_json || '{}'))));
     const { results } = await env.DB.prepare(`SELECT a.id, a.name, a.grade, a.score, a.breakdown_json, a.duration_seconds, a.finished_at,
       (SELECT COUNT(*) FROM math_exam_attempts n WHERE n.ip_hash = a.ip_hash) AS network_attempts
       FROM math_exam_attempts a WHERE a.status = 'finished' ORDER BY a.finished_at DESC LIMIT 500`).all();

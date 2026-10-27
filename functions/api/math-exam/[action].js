@@ -131,6 +131,29 @@ async function handle(action, request, env) {
     return response({ attemptId: id, token, deadlineAt: now + DURATION_MS, durationSeconds: DURATION_MS / 1000 });
   }
 
+  if (action === 'delete-result') {
+    await requireAdmin(request, env);
+    const attemptId = String(body.attemptId || '');
+    if (!/^[0-9a-f-]{36}$/i.test(attemptId)) return response({ error: 'El intento seleccionado no es válido.' }, 400);
+    const attempt = await env.DB.prepare(`SELECT id FROM math_exam_attempts WHERE id = ? AND status = 'finished'`).bind(attemptId).first();
+    if (!attempt) return response({ error: 'No encontramos esa nota. Actualiza la lista e intenta de nuevo.' }, 404);
+    await env.DB.batch([
+      env.DB.prepare('DELETE FROM math_exam_integrity_events WHERE attempt_id = ?').bind(attemptId),
+      env.DB.prepare(`DELETE FROM math_exam_attempts WHERE id = ? AND status = 'finished'`).bind(attemptId),
+    ]);
+    return response({ deleted: true });
+  }
+
+  if (action === 'reset-results') {
+    await requireAdmin(request, env);
+    const counts = await env.DB.prepare('SELECT COUNT(*) AS total FROM math_exam_attempts').first();
+    await env.DB.batch([
+      env.DB.prepare('DELETE FROM math_exam_integrity_events'),
+      env.DB.prepare('DELETE FROM math_exam_attempts'),
+    ]);
+    return response({ deletedAttempts: counts.total || 0 });
+  }
+
   if (action === 'results') {
     await requireAdmin(request, env);
     const expired = await env.DB.prepare(`SELECT * FROM math_exam_attempts WHERE status = 'in_progress' AND deadline_at <= ? LIMIT 500`).bind(Date.now()).all();

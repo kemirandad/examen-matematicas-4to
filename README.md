@@ -19,7 +19,7 @@ Sitio independiente para el examen final del tercer periodo de la I.E.D. San Fra
 
 1. Instala dependencias con `npm install`.
 2. Inicia sesión con `npx wrangler login` y crea el proyecto de Pages con `npm run pages:create`.
-3. Crea la base D1 con `npm run db:create`. Copia el `database_id` que devuelve el comando a `wrangler.toml`, reemplazando `REEMPLAZAR_CON_EL_ID_DE_D1`.
+3. La base D1 `examen-matematicas-4to` ya está creada y vinculada en `wrangler.toml`.
 4. Aplica el esquema con `npm run db:migrate`.
 5. En Firebase Authentication crea la cuenta de coordinación con correo y contraseña. Copia su UID desde la consola Firebase.
 6. Configura los secretos `ADMIN_UID` e `IP_HASH_SECRET` en Pages con `npx wrangler pages secret put ADMIN_UID --project-name examen-matematicas-4to` y `npx wrangler pages secret put IP_HASH_SECRET --project-name examen-matematicas-4to`. Usa para `IP_HASH_SECRET` una cadena aleatoria larga.

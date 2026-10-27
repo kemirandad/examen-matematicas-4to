@@ -8,4 +8,4 @@ FIREBASE_PROJECT_ID = "examen-matematicas-4to"
 [[d1_databases]]
 binding = "DB"
 database_name = "examen-matematicas-4to"
-database_id = "REEMPLAZAR_CON_EL_ID_DE_D1"
+database_id = "47fa79d5-4b14-4a49-ad7b-969c7fcc67ae"

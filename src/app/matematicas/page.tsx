@@ -39,9 +39,24 @@ export default function MathExamPage() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const [saved, setSaved] = useState(true);
+  const [integrityWarnings, setIntegrityWarnings] = useState(0);
+  const [fullscreenActive, setFullscreenActive] = useState(false);
+  const [integrityNotice, setIntegrityNotice] = useState('');
   const finishing = useRef(false);
   const answersRef = useRef(answers);
   answersRef.current = answers;
+
+  const recordIntegrityEvent = useCallback((eventType: 'tab_hidden' | 'fullscreen_exit', beacon = false) => {
+    if (!session) return;
+    setIntegrityWarnings((count) => count + 1);
+    setIntegrityNotice('El examen registró una salida de la pantalla del examen. El cronómetro sigue corriendo.');
+    const payload = { attemptId: session.attemptId, token: session.token, eventType };
+    if (beacon && navigator.sendBeacon) {
+      const queued = navigator.sendBeacon('/api/math-exam/event', new Blob([JSON.stringify(payload)], { type: 'application/json' }));
+      if (queued) return;
+    }
+    void examApi('event', payload).catch(() => setIntegrityNotice('No se pudo sincronizar un aviso de supervisión. Mantén la conexión para guardar tus respuestas.'));
+  }, [session]);
 
   const finish = useCallback(async (latest: Answers, currentSession = session) => {
     if (!currentSession || finishing.current) return;
@@ -53,6 +68,7 @@ export default function MathExamPage() {
       const finalResult = { score: Number(data.score), breakdown: data.breakdown || {}, answers: data.answers || latest, durationSeconds: Number(data.durationSeconds || 0) };
       setResult(finalResult);
       setPhase('done');
+      if (document.fullscreenElement) void document.exitFullscreen();
       localStorage.removeItem(sessionKey);
       setNotice('');
     } catch (error) {
@@ -84,6 +100,9 @@ export default function MathExamPage() {
           const resumed = { ...recovered, deadlineAt: Number(state.deadlineAt || recovered.deadlineAt) };
           setSession(resumed);
           setAnswers(state.answers || blank);
+          setIntegrityWarnings(Number(state.integrityCount || 0));
+          setFullscreenActive(Boolean(document.fullscreenElement));
+          setIntegrityNotice(document.fullscreenElement ? '' : 'Al reanudar, activa la pantalla completa con el botón superior.');
           setPhase('exam');
         }
       } catch {
@@ -121,17 +140,58 @@ export default function MathExamPage() {
     return () => window.clearTimeout(timer);
   }, [answers, session, phase]);
 
+  useEffect(() => {
+    if (!session || phase !== 'exam') return;
+    let wasFullscreen = Boolean(document.fullscreenElement);
+    setFullscreenActive(wasFullscreen);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') recordIntegrityEvent('tab_hidden', true);
+      else setFullscreenActive(Boolean(document.fullscreenElement));
+    };
+    const onFullscreenChange = () => {
+      const active = Boolean(document.fullscreenElement);
+      setFullscreenActive(active);
+      if (wasFullscreen && !active && document.visibilityState === 'visible') recordIntegrityEvent('fullscreen_exit');
+      wasFullscreen = active;
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      document.removeEventListener('fullscreenchange', onFullscreenChange);
+    };
+  }, [session, phase, recordIntegrityEvent]);
+
   const answered = useMemo(() => answers.q1.filter(Boolean).length + [answers.q2, answers.q3, answers.q4, answers.q5, answers.q6, answers.q7].filter((value) => value.trim()).length, [answers]);
   const startExam = async () => {
     setBusy(true); setNotice('');
+    let fullscreenEntered = false;
     try {
+      if (document.fullscreenEnabled && document.documentElement.requestFullscreen) {
+        try { await document.documentElement.requestFullscreen(); fullscreenEntered = true; }
+        catch { fullscreenEntered = false; }
+      }
       const data = await examApi('start', { name: studentName.trim(), grade });
       const started = { attemptId: data.attemptId, token: data.token, deadlineAt: Number(data.deadlineAt), durationSeconds: Number(data.durationSeconds) } as Session;
       localStorage.setItem(sessionKey, JSON.stringify(started));
       setSession(started); setAnswers(blank); setPhase('exam'); setRemaining(started.durationSeconds); finishing.current = false;
+      setIntegrityWarnings(0); setFullscreenActive(Boolean(document.fullscreenElement));
+      setIntegrityNotice(fullscreenEntered ? '' : 'No se pudo activar la pantalla completa. El cronómetro seguirá corriendo.');
     } catch (error) {
+      if (document.fullscreenElement) void document.exitFullscreen();
       setNotice(error instanceof Error ? error.message : 'No se pudo iniciar el examen. Intenta otra vez.');
     } finally { setBusy(false); }
+  };
+
+  const activateFullscreen = async () => {
+    try {
+      if (!document.fullscreenEnabled || !document.documentElement.requestFullscreen) throw new Error('UNAVAILABLE');
+      await document.documentElement.requestFullscreen();
+      setFullscreenActive(Boolean(document.fullscreenElement));
+      setIntegrityNotice('');
+    } catch {
+      setIntegrityNotice('Este navegador no permitió activar la pantalla completa. El examen y el cronómetro siguen activos.');
+    }
   };
 
   const update = (key: keyof Answers, value: string, index?: number) => {
@@ -151,7 +211,7 @@ export default function MathExamPage() {
           <span className="grid h-12 w-12 place-items-center rounded-2xl bg-teal-800 text-white shadow-lg shadow-teal-900/15"><GraduationCap className="h-6 w-6"/></span>
           <span><span className="block text-[11px] font-bold uppercase tracking-[.19em] text-teal-800">I.E.D. San Francisco Javier</span><span className="block font-serif text-lg font-bold tracking-tight text-slate-800">Aula de Matemáticas</span></span>
         </a>
-        {phase === 'exam' && <div className={`flex items-center gap-2 rounded-2xl border px-4 py-2.5 font-mono text-lg font-bold tabular-nums ${remaining < 300 ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-teal-200 bg-white/90 text-teal-800'}`}><Clock3 className="h-4 w-4"/>{formatTime(remaining)}</div>}
+        {phase === 'exam' && <div className="flex items-center gap-2">{!fullscreenActive && <button onClick={() => void activateFullscreen()} className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900 hover:bg-amber-100">Activar pantalla completa</button>}<div className={`flex items-center gap-2 rounded-2xl border px-4 py-2.5 font-mono text-lg font-bold tabular-nums ${remaining < 300 ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-teal-200 bg-white/90 text-teal-800'}`}><Clock3 className="h-4 w-4"/>{formatTime(remaining)}</div></div>}
       </header>
 
       {phase === 'welcome' && <div className="space-y-5">
@@ -165,7 +225,7 @@ export default function MathExamPage() {
         </section>
         <div className="grid gap-5 lg:grid-cols-[1.2fr_.8fr]">
           <section className={`${cards} sm:p-8`}><div className="mb-6 flex items-start gap-3"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-amber-100 text-amber-800"><BookOpenCheck className="h-5 w-5"/></span><div><h2 className="font-serif text-2xl font-bold">Antes de comenzar</h2><p className="mt-1 text-sm text-slate-500">Prepara tu espacio y revisa estas indicaciones.</p></div></div>
-            <div className="space-y-4">{[['Lee con atención', 'Resuelve cada ejercicio y revisa tus respuestas antes de entregar.'], ['El tiempo corre', 'Tendrás 45 minutos. El examen se entrega automáticamente al llegar a cero.'], ['Un intento por estudiante y salón', 'Tus compañeros pueden presentar el examen desde la misma red. Escribe tu nombre correctamente; el sistema registra un solo intento por nombre y grado.']].map(([title, copy], i) => <div key={title} className="flex gap-3"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-teal-50 text-xs font-extrabold text-teal-800">{i + 1}</span><p className="text-sm leading-6 text-slate-600"><strong className="text-slate-800">{title}. </strong>{copy}</p></div>)}</div>
+            <div className="space-y-4">{[['Lee con atención', 'Resuelve cada ejercicio y revisa tus respuestas antes de entregar.'], ['El tiempo corre', 'Tendrás 45 minutos. El examen se entrega automáticamente al llegar a cero.'], ['Modo de enfoque', 'Se solicitará pantalla completa y se registrará si cambias de pestaña o sales de ella. No se usa ni se graba la cámara.'], ['Un intento por estudiante y salón', 'Tus compañeros pueden presentar el examen desde la misma red. Escribe tu nombre correctamente; el sistema registra un solo intento por nombre y grado.']].map(([title, copy], i) => <div key={title} className="flex gap-3"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-teal-50 text-xs font-extrabold text-teal-800">{i + 1}</span><p className="text-sm leading-6 text-slate-600"><strong className="text-slate-800">{title}. </strong>{copy}</p></div>)}</div>
           </section>
           <section className={`${cards} sm:p-8`}><div className="mb-5 flex items-center gap-3"><span className="grid h-11 w-11 place-items-center rounded-2xl bg-teal-50 text-teal-800"><GraduationCap className="h-5 w-5"/></span><div><h2 className="font-serif text-2xl font-bold">Identifícate</h2><p className="text-sm text-slate-500">Tu nota se guardará con estos datos.</p></div></div>
             <label className="mb-4 block text-sm font-bold text-slate-700">Nombre completo<input value={studentName} onChange={(event) => setStudentName(event.target.value)} maxLength={100} autoComplete="name" placeholder="Escribe tus nombres y apellidos" className="mt-2 h-12 w-full rounded-xl border border-slate-200 bg-[#fbfcfa] px-4 text-base font-medium outline-none transition focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10"/></label>
@@ -178,6 +238,7 @@ export default function MathExamPage() {
       </div>}
 
       {phase === 'exam' && <div className="space-y-5">
+        {(integrityWarnings > 0 || integrityNotice) && <p role="status" className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold leading-6 text-amber-900">{integrityWarnings > 0 && `Aviso ${integrityWarnings}: se registró una salida de la pestaña o de pantalla completa. `}{integrityNotice}{integrityWarnings > 0 && 'El cronómetro no se pausa por este motivo.'}</p>}
         <section className="rounded-3xl border border-slate-200/80 bg-white/90 px-5 py-4 shadow-sm sm:flex sm:items-center sm:justify-between"><div><p className="text-xs font-bold uppercase tracking-[.14em] text-teal-800">Examen final · 4.º · {grade || 'Tu salón'}</p><h1 className="mt-1 font-serif text-xl font-bold">¡Vamos, {studentName.trim().split(' ')[0] || 'estudiante'}!</h1></div><div className="mt-3 flex items-center gap-3 sm:mt-0"><div className="h-2 w-36 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-teal-600 transition-all" style={{ width: `${progress}%` }}/></div><span className="text-xs font-bold text-slate-500">{answered}/11 respuestas</span><span className="text-[11px] text-slate-400">{saved ? 'Guardado' : 'Guardando…'}</span></div></section>
         <section className={`${cards} border-l-4 border-l-teal-700`}><p className="text-xs font-bold uppercase tracking-[.14em] text-teal-800">Sección 1 · 20 puntos</p><h2 className="mt-2 font-serif text-2xl font-bold">Orden y comparación de decimales</h2>
           <div className="mt-6"><p className="font-bold">1. Escribe el signo correcto: mayor que (&gt;), menor que (&lt;) o igual (=). <span className="font-medium text-slate-500">(10 puntos)</span></p><div className="mt-4 grid gap-3 sm:grid-cols-2">{['5,6 ___ 5,7', '9,20 ___ 9,2', '4,8 ___ 4,80', '0,3 ___ 0,03'].map((item, index) => <label key={item} className="flex items-center justify-between gap-3 rounded-2xl bg-[#f7f9f6] px-4 py-3.5"><span className="font-mono text-lg font-bold tracking-wide">{item}</span><select aria-label={`Signo para comparación ${index + 1}`} value={answers.q1[index]} onChange={(event) => update('q1', event.target.value, index)} className="h-11 w-20 rounded-xl border border-slate-200 bg-white text-center text-xl font-bold text-teal-800 outline-none focus:border-teal-600"><option value="">?</option><option value=">">&gt;</option><option value="<">&lt;</option><option value="=">=</option></select></label>)}</div></div>

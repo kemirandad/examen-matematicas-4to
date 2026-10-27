@@ -7,6 +7,7 @@ Sitio independiente para el examen final del tercer periodo de la I.E.D. San Fra
 - Siete ejercicios del examen, cinco salones (4-1 a 4-5), cronómetro de 45 minutos y calificación automática sobre 100.
 - El servidor inicia el reloj, guarda respuestas y entrega automáticamente lo guardado cuando vence el tiempo.
 - Un intento por nombre normalizado y salón. Se guarda un hash de la IP pública para identificar coincidencias de red; la IP no bloquea a otros estudiantes que usan el mismo Wi-Fi.
+- El examen solicita pantalla completa y registra cambios de pestaña/salidas de pantalla completa para coordinación. Son señales de revisión, no una prueba automática; no se solicita ni graba video.
 - Panel privado de notas, filtros y descarga CSV. El API valida el token de Firebase y compara el UID con `ADMIN_UID` configurado como secreto en Cloudflare.
 
 ## Servicios
@@ -48,4 +49,4 @@ La cuota gratuita de Cloudflare tiene límites diarios. Al alcanzarlos, la API p
 
 ## Privacidad y límite de intentos
 
-D1 guarda nombre, salón, respuestas, puntaje, duración, fechas y hashes HMAC de identidad/IP; la clave HMAC permanece como secreto de Cloudflare. El índice único impide un segundo intento con el mismo nombre normalizado y salón. Como no existe una lista oficial de estudiantes, cambiar el nombre podría evadir este control; para vincular el intento a una persona concreta, agrega un código individual por estudiante antes de aplicar el examen.
+D1 guarda nombre, salón, respuestas, puntaje, duración, fechas, hashes HMAC de identidad/IP y eventos de visibilidad; la clave HMAC permanece como secreto de Cloudflare. El índice único impide un segundo intento con el mismo nombre normalizado y salón. Como no existe una lista oficial de estudiantes, cambiar el nombre podría evadir este control; para vincular el intento a una persona concreta, agrega un código individual por estudiante antes de aplicar el examen. La cámara no se usa ni se graba.

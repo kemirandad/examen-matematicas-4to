@@ -79,6 +79,13 @@ function resultFrom(attempt) {
     answers: JSON.parse(attempt.answers_json || '{}'), durationSeconds: attempt.duration_seconds, name: attempt.name, grade: attempt.grade };
 }
 
+async function getIntegrityCounts(env, attemptId) {
+  return env.DB.prepare(`SELECT COUNT(*) AS total,
+      SUM(CASE WHEN event_type = 'tab_hidden' THEN 1 ELSE 0 END) AS tab_hidden,
+      SUM(CASE WHEN event_type = 'fullscreen_exit' THEN 1 ELSE 0 END) AS fullscreen_exit
+      FROM math_exam_integrity_events WHERE attempt_id = ?`).bind(attemptId).first();
+}
+
 async function finishAttempt(env, attempt, answers) {
   const now = Date.now();
   const graded = gradeExam(answers);
@@ -129,20 +136,37 @@ async function handle(action, request, env) {
     const expired = await env.DB.prepare(`SELECT * FROM math_exam_attempts WHERE status = 'in_progress' AND deadline_at <= ? LIMIT 500`).bind(Date.now()).all();
     await Promise.all(expired.results.map((attempt) => finishAttempt(env, attempt, JSON.parse(attempt.answers_json || '{}'))));
     const { results } = await env.DB.prepare(`SELECT a.id, a.name, a.grade, a.score, a.breakdown_json, a.duration_seconds, a.finished_at,
-      (SELECT COUNT(*) FROM math_exam_attempts n WHERE n.ip_hash = a.ip_hash) AS network_attempts
+      (SELECT COUNT(*) FROM math_exam_attempts n WHERE n.ip_hash = a.ip_hash) AS network_attempts,
+      (SELECT COUNT(*) FROM math_exam_integrity_events e WHERE e.attempt_id = a.id AND e.event_type = 'tab_hidden') AS tab_hidden_count,
+      (SELECT COUNT(*) FROM math_exam_integrity_events e WHERE e.attempt_id = a.id AND e.event_type = 'fullscreen_exit') AS fullscreen_exit_count
       FROM math_exam_attempts a WHERE a.status = 'finished' ORDER BY a.finished_at DESC LIMIT 500`).all();
     return response({ results: results.map((item) => ({ id: item.id, name: item.name, grade: item.grade, score: item.score,
       breakdown: JSON.parse(item.breakdown_json || '{}'), durationSeconds: item.duration_seconds,
-      finishedAt: item.finished_at, networkAttempts: item.network_attempts })) });
+      finishedAt: item.finished_at, networkAttempts: item.network_attempts,
+      tabSwitches: item.tab_hidden_count, fullscreenExits: item.fullscreen_exit_count })) });
   }
 
-  if (!['save', 'finish', 'status'].includes(action)) return response({ error: 'Ruta no encontrada.' }, 404);
+  if (!['save', 'finish', 'status', 'event'].includes(action)) return response({ error: 'Ruta no encontrada.' }, 404);
   const attempt = await getAttempt(env, body);
   if (attempt.status === 'finished') return response(resultFrom(attempt));
   const now = Date.now();
   const savedAnswers = JSON.parse(attempt.answers_json || '{}');
   const expired = now >= attempt.deadline_at;
-  if (action === 'status' && !expired) return response({ status: 'in_progress', answers: savedAnswers, deadlineAt: attempt.deadline_at, name: attempt.name, grade: attempt.grade });
+  if (action === 'event') {
+    if (expired) return response({ error: 'El tiempo del examen terminó.' }, 409);
+    const eventType = String(body.eventType || '');
+    if (!['tab_hidden', 'fullscreen_exit'].includes(eventType)) return response({ error: 'Evento de supervisión no válido.' }, 400);
+    await env.DB.prepare(`INSERT INTO math_exam_integrity_events (id, attempt_id, event_type, created_at)
+      SELECT ?, ?, ?, ? WHERE (SELECT COUNT(*) FROM math_exam_integrity_events WHERE attempt_id = ?) < 100`)
+      .bind(crypto.randomUUID(), attempt.id, eventType, now, attempt.id).run();
+    const counts = await getIntegrityCounts(env, attempt.id);
+    return response({ status: 'in_progress', integrityCount: counts.total || 0, tabSwitches: counts.tab_hidden || 0, fullscreenExits: counts.fullscreen_exit || 0 });
+  }
+  if (action === 'status' && !expired) {
+    const counts = await getIntegrityCounts(env, attempt.id);
+    return response({ status: 'in_progress', answers: savedAnswers, deadlineAt: attempt.deadline_at, name: attempt.name, grade: attempt.grade,
+      integrityCount: counts.total || 0, tabSwitches: counts.tab_hidden || 0, fullscreenExits: counts.fullscreen_exit || 0 });
+  }
   if (action === 'save' && !expired) {
     const answers = cleanAnswers(body.answers);
     const update = await env.DB.prepare(`UPDATE math_exam_attempts SET answers_json = ? WHERE id = ? AND status = 'in_progress' AND deadline_at > ?`)

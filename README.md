@@ -11,11 +11,11 @@ Proyecto web independiente para el examen final de matemáticas del tercer perio
 
 ## Configuración de Firebase
 
-Se necesita un proyecto Firebase propio para este examen. Crea un proyecto nuevo en Firebase Console (no selecciones BAYCANJA), registra una app web, habilita Authentication con correo/contraseña y crea Firestore en modo producción. Copia `.env.local.example` como `.env.local` y pega los valores de la app web. Esas claves identifican el proyecto Firebase y no son una cuenta de servicio.
+El proyecto `examen-matematicas-4to` ya tiene una app web registrada, Firebase Authentication con correo/contraseña y una base Firestore Standard en modo de producción, ubicada en `southamerica-east1` (São Paulo). El archivo `.firebaserc` selecciona este proyecto para la Firebase CLI. Este checkout tiene su configuración local en `.env.local`; en otro entorno, copia `.env.local.example` a `.env.local` y completa los valores de la app web. Las claves del SDK web identifican el proyecto y no son una cuenta de servicio. `.env.local` está excluido de Git.
 
 Para habilitar a coordinación:
 
-1. Crea la cuenta administradora en Firebase Authentication.
+1. Crea la cuenta administradora en Firebase Authentication (correo/contraseña está habilitado).
 2. En Firestore crea la colección `mathExamAdmins` y un documento cuyo ID sea el UID de esa cuenta; agrega `active: true` (boolean).
 3. Conserva el UID de la cuenta solo para personal de coordinación. El panel también lo muestra cuando el usuario aún no tiene permiso.
 
@@ -29,16 +29,23 @@ Copy-Item .env.local.example .env.local
 npm run dev
 ```
 
-Para desplegar, inicia sesión en Firebase CLI, selecciona el proyecto nuevo y publica Hosting, reglas y funciones:
+Para ejecutar localmente, instala dependencias y prepara el archivo local de configuración:
+
+```powershell
+npm install
+Copy-Item .env.local.example .env.local
+npm run dev
+```
+
+Para publicar, inicia sesión en Firebase CLI y publica Hosting, reglas y funciones:
 
 ```powershell
 firebase login
-firebase use --add
 npm run build
 firebase deploy --only hosting,firestore:rules,functions
 ```
 
-Cloud Functions requiere el plan Blaze de Firebase y la habilitación de facturación/servicios de Google Cloud. Revisa el costo estimado y las cuotas del proyecto antes de aplicarlo a una evaluación de todo el colegio.
+El proyecto sigue en Spark. La interfaz y Authentication/Firestore pueden usarse dentro de sus cuotas gratuitas, pero desplegar `mathExamApi` en Cloud Functions requiere Blaze y vincular facturación. Sin esa función, la aplicación no puede hacer cumplir el límite de IP ni el cronómetro desde el servidor. No cambies de plan sin revisar antes el costo y las cuotas.
 
 ## Requisito de IP
 
